@@ -29,11 +29,11 @@
         ...
       }: let
         craneLib = inputs.crane.mkLib pkgs;
-        commonArgs = {
-          src = craneLib.cleanCargoSource ./.;
-          strictDeps = true;
-        };
-        cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+        # commonArgs = {
+        #   src = craneLib.cleanCargoSource ./.;
+        #   strictDeps = true;
+        # };
+        # cargoArtifacts = craneLib.buildDepsOnly commonArgs;
       in {
         treefmt.programs = {
           alejandra.enable = true;
@@ -45,12 +45,12 @@
             nil
           ];
         };
-        packages.default =
-          craneLib.buildPackage
-          (commonArgs
-            // {
-              inherit cargoArtifacts;
-            });
+        # packages.default =
+        #   craneLib.buildPackage
+        #   (commonArgs
+        #     // {
+        #       inherit cargoArtifacts;
+        #     });
       };
     };
 }
