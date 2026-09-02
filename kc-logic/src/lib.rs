@@ -57,3 +57,61 @@ impl Default for PieceCounts {
         }
     }
 }
+
+pub struct Round {
+    pub builds: Vec<Building>,
+    pub kartopult_move: Vec<KartopultMove>,
+    pub kartopult_shots: Vec<KartopultShot>,
+}
+
+pub struct Building {
+    pub cost: usize,
+    pub x: usize,
+    pub y: usize,
+    pub piece: BuildablePiece,
+}
+
+pub enum BuildablePiece {
+    By,
+    Vej,
+    Mur,
+    Kartopult(Kartopult),
+}
+
+pub struct KartopultMove {
+    pub x: usize,
+    pub y: usize,
+    pub moves: Vec<DirectionRet>,
+}
+
+pub struct KartopultShot {
+    pub x: usize,
+    pub y: usize,
+    pub direction: Direction,
+    pub power: KartopultPower,
+}
+
+pub enum KartopultPower {
+    One = 1,
+    Two = 2,
+    Three = 3,
+}
+
+pub enum Direction {
+    Ret(DirectionDiagonal),
+    Diagonal(DirectionRet),
+}
+
+pub enum DirectionRet {
+    Up,
+    Right,
+    Down,
+    Left,
+}
+
+pub enum DirectionDiagonal {
+    UpLeft,
+    UpRight,
+    DownRight,
+    DownLeft,
+}
