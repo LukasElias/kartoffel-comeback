@@ -1,14 +1,59 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+use std::default::Default;
+
+pub struct GameState {
+    pub players: Vec<Player>,
+    pub board: [[Square; 20]; 20],
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub struct Player {
+    pub preferred_color: Color,
+    pub potato_count: usize,
+    pub piece_counts: PieceCounts,
+}
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+pub struct Color {
+    pub red: u8,
+    pub green: u8,
+    pub blue: u8,
+}
+
+pub enum Square {
+    Empty,
+    PlayerOne(Piece),
+    PlayerTwo(Piece),
+    PlayerThree(Piece),
+    PlayerFour(Piece),
+}
+
+pub enum Piece {
+    Hovedby(Option<Kartopult>),
+    ØdelagtHovedby,
+    By(Option<Kartopult>),
+    Vej(Option<Kartopult>),
+    Mur,
+}
+
+pub enum Kartopult {
+    Ret,
+    Diagonal,
+}
+
+pub struct PieceCounts {
+    pub by: usize,
+    pub kartopult_ret: usize,
+    pub kartopult_diagonal: usize,
+    pub vej: usize,
+    pub mur: usize,
+}
+
+impl Default for PieceCounts {
+    fn default() -> Self {
+        Self {
+            by: 5,
+            kartopult_ret: 5,
+            kartopult_diagonal: 5,
+            vej: 40,
+            mur: 10,
+        }
     }
 }
