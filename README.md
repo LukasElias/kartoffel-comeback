@@ -17,7 +17,7 @@ Hver spillers brikker har en farve.
 - Hver spiller har 1 hovedby.
 - Hver runde giver den en kartoffel for hvert felt.
 - Man taber hvis alle felter i sin hovedby bliver skudt ned.
-- Hvis et felt bliver ødelagt i sin hovedby, er veje der forbinder byer med hovedbyen gennem dette felt ugyldige, fordi feltet ikke længere er en del af hovedbyen. Du kan stadig forbinde disse veje til andre dele af hovedbyen. Man kan heller ikke bygge på dette felt længere.
+- Hvis et felt bliver ødelagt i sin hovedby, er veje der forbinder byer med hovedbyen gennem dette felt ugyldige, fordi feltet ikke længere er en del af hovedbyen. Man kan heller ikke bygge på dette felt længere.
 
 ### By
 
@@ -35,21 +35,21 @@ Kartopulter har to typer, en der skyder diagonalt, og en der skyder vandret og l
 - Hver spiller har 5 kartopulter af hver type.
 - Koster 3 kartofler at bygge.
 - Hver runde kan man flytte sine kartopulter og angribe med dem. (læs mere i sektionen om brug af kartopulter)
-- Man kan bygge en kartopult oven på en by.
+- Man kan bygge en kartopult oven på en by eller hovedby.
 
 ### Vej
 
 - Fylder 1 felt.
 - Hver spiller har 40 veje.
 - Koster 1 kartoffel at lave.
-- Man må bygge en vej ved siden af en by eller hovedby.
+- Man må bygge en vej ved siden af en by, hovedby eller anden vej.
 
 ### Mur
 
 - Fylder 1 felt.
 - Hver spiller har 10 mure.
 - Koster 1 kartoffel at lave.
-- Man må bygge en mur ved siden af en vej, by eller anden mur.
+- Man må bygge en mur ved siden af en vej, by, hovedby eller anden mur.
 - Man kan ikke skyde over en mur med en kartopult, så man skal angribe muren først. Man kan heller ikke skyde over sine egne mure.
 
 ## Bræt
