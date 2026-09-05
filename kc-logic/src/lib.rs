@@ -19,6 +19,47 @@ impl GameState {
         &mut self.players[self.current_player_number as usize]
     }
 
+    pub fn get_neighbors(&self, x: usize, y: usize) -> [Option<Square>; 4] {
+        ALL_DIRECTION_RET.map(|direction| {
+            let vector = direction.into_vector();
+
+            let x = x as isize + vector.0;
+            let y = y as isize + vector.1;
+
+            if x < 0 || x >= self.board.len() as isize || y < 0 || y >= self.board[0].len() as isize
+            {
+                return None; // Maybe make another type later, for outofbounds errors and
+                // make it a result instead of option
+            }
+
+            Some(self.board[x as usize][y as usize])
+        })
+    }
+
+    pub fn has_neighbor_of_kind<F>(&self, x: usize, y: usize, is_correct_piece: F) -> bool
+    where
+        F: Fn(&Piece, PlayerNumber) -> bool,
+    {
+        let neighbor_squares = self.get_neighbors(x, y);
+
+        let mut next_to_correct_piece = false;
+
+        for neighbor in neighbor_squares {
+            if let Some(neighbor) = neighbor {
+                let is_correct_piece = neighbor.map_piece(&is_correct_piece);
+
+                if let Some(is_correct_piece) = is_correct_piece {
+                    if is_correct_piece {
+                        next_to_correct_piece = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        next_to_correct_piece
+    }
+
     pub fn build(mut self, building: Building) -> Result<Self, ()> {
         // Check that the player has enough potatos
         if self.current_player().potato_count < building.piece.cost() {
@@ -30,175 +71,101 @@ impl GameState {
             return Err(());
         }
 
+        // Check that the building position is inside the boards bounds
         if building.x >= self.board.len() || building.y >= self.board[0].len() {
             return Err(());
         };
 
         match building.piece {
             BuildablePiece::By => {
-                let neighbor_squares = ALL_DIRECTION_RET.map(|direction| {
-                    let vector = direction.into_vector();
-
-                    let x = building.x as isize + vector.0;
-                    let y = building.y as isize + vector.1;
-
-                    if x < 0 || x >= self.board.len() as isize || y < 0 || y >= self.board[0].len() as isize {
-                        return None; // Maybe make another type later, for outofbounds errors and
-                                     // make it a result instead of option
-                    }
-
-                    Some(self.board[x as usize][y as usize])
-                });
-
-                let mut next_to_vej = false;
-
-                for neighbor in neighbor_squares {
-                    if let Some(neighbor) = neighbor {
-                        let is_vej = neighbor.map_piece(|piece, player| {
-                            if player == self.current_player_number {
-                                match piece {
-                                    Piece::Vej(_) => true,
-                                    _ => false,
-                                }
-                            } else {
-                                false
+                let next_to_correct_piece =
+                    self.has_neighbor_of_kind(building.x, building.y, |piece, player| {
+                        if player == self.current_player_number {
+                            match piece {
+                                Piece::Vej(_) => true,
+                                _ => false,
                             }
-                        });
-
-                        if let Some(is_vej) = is_vej {
-                            if is_vej {
-                                next_to_vej = true;
-                                break;
-                            }
+                        } else {
+                            false
                         }
-                    }
-                }
+                    });
 
-                if !next_to_vej || self.board[building.x][building.y] != Square::Empty {
+                if !next_to_correct_piece || self.board[building.x][building.y] != Square::Empty {
                     return Err(());
                 }
 
                 // Build
-                self.board[building.x][building.y] = Square::from_player_number(&self.current_player_number, building.piece.into())
-            },
+                self.board[building.x][building.y] =
+                    Square::from_player_number(&self.current_player_number, building.piece.into())
+            }
             BuildablePiece::Vej => {
-                let neighbor_squares = ALL_DIRECTION_RET.map(|direction| {
-                    let vector = direction.into_vector();
-
-                    let x = building.x as isize + vector.0;
-                    let y = building.y as isize + vector.1;
-
-                    if x < 0 || x >= self.board.len() as isize || y < 0 || y >= self.board[0].len() as isize {
-                        return None; // Maybe make another type later, for outofbounds errors and
-                                     // make it a result instead of option
-                    }
-
-                    Some(self.board[x as usize][y as usize])
-                });
-
-                let mut next_to_correct_piece = false;
-
-                for neighbor in neighbor_squares {
-                    if let Some(neighbor) = neighbor {
-                        let is_correct_piece = neighbor.map_piece(|piece, player| {
-                            if player == self.current_player_number {
-                                match piece {
-                                    Piece::Vej(_) => true,
-                                    Piece::By(_) => true,
-                                    Piece::Hovedby(_) => true,
-                                    _ => false,
-                                }
-                            } else {
-                                false
+                let next_to_correct_piece =
+                    self.has_neighbor_of_kind(building.x, building.y, |piece, player| {
+                        if player == self.current_player_number {
+                            match piece {
+                                Piece::Vej(_) | Piece::By(_) | Piece::Hovedby(_) => true,
+                                _ => false,
                             }
-                        });
-
-                        if let Some(is_correct_piece) = is_correct_piece {
-                            if is_correct_piece {
-                                next_to_correct_piece = true;
-                                break;
-                            }
+                        } else {
+                            false
                         }
-                    }
-                }
+                    });
 
                 if !next_to_correct_piece || self.board[building.x][building.y] != Square::Empty {
                     return Err(());
                 }
 
                 // Build
-                self.board[building.x][building.y] = Square::from_player_number(&self.current_player_number, building.piece.into())
-            },
+                self.board[building.x][building.y] =
+                    Square::from_player_number(&self.current_player_number, building.piece.into())
+            }
             BuildablePiece::Mur => {
-                let neighbor_squares = ALL_DIRECTION_RET.map(|direction| {
-                    let vector = direction.into_vector();
-
-                    let x = building.x as isize + vector.0;
-                    let y = building.y as isize + vector.1;
-
-                    if x < 0 || x >= self.board.len() as isize || y < 0 || y >= self.board[0].len() as isize {
-                        return None; // Maybe make another type later, for outofbounds errors and
-                                     // make it a result instead of option
-                    }
-
-                    Some(self.board[x as usize][y as usize])
-                });
-
-                let mut next_to_correct_piece = false;
-
-                for neighbor in neighbor_squares {
-                    if let Some(neighbor) = neighbor {
-                        let is_correct_piece = neighbor.map_piece(|piece, player| {
-                            if player == self.current_player_number {
-                                match piece {
-                                    Piece::Vej(_) => true,
-                                    Piece::By(_) => true,
-                                    Piece::Hovedby(_) => true,
-                                    Piece::Mur => true,
-                                    _ => false,
+                let next_to_correct_piece =
+                    self.has_neighbor_of_kind(building.x, building.y, |piece, player| {
+                        if player == self.current_player_number {
+                            match piece {
+                                Piece::Vej(_) | Piece::By(_) | Piece::Hovedby(_) | Piece::Mur => {
+                                    true
                                 }
-                            } else {
-                                false
+                                _ => false,
                             }
-                        });
-
-                        if let Some(is_correct_piece) = is_correct_piece {
-                            if is_correct_piece {
-                                next_to_correct_piece = true;
-                                break;
-                            }
+                        } else {
+                            false
                         }
-                    }
-                }
+                    });
 
                 if !next_to_correct_piece || self.board[building.x][building.y] != Square::Empty {
                     return Err(());
                 }
 
                 // Build
-                self.board[building.x][building.y] = Square::from_player_number(&self.current_player_number, building.piece.into())
-            },
+                self.board[building.x][building.y] =
+                    Square::from_player_number(&self.current_player_number, building.piece.into())
+            }
             BuildablePiece::Kartopult(kartopult) => {
-                let new_piece = self.board[building.x][building.y].map_piece(|piece, player| {
-                    if player == self.current_player_number {
-                        match piece {
-                            Piece::By(None) => Some(Piece::By(Some(kartopult))),
-                            Piece::Hovedby(None) => Some(Piece::Hovedby(Some(kartopult))),
-                            _ => None,
+                let new_piece = self.board[building.x][building.y]
+                    .map_piece(|piece, player| {
+                        if player == self.current_player_number {
+                            match piece {
+                                Piece::By(None) => Some(Piece::By(Some(kartopult))),
+                                Piece::Hovedby(None) => Some(Piece::Hovedby(Some(kartopult))),
+                                _ => None,
+                            }
+                        } else {
+                            None
                         }
-                    } else {
-                        None
-                    }
-                }).unwrap_or(None);
+                    })
+                    .unwrap_or(None);
 
                 if let Some(piece) = new_piece {
                     // Build
-                    self.board[building.x][building.y] = Square::from_player_number(&self.current_player_number, piece);
+                    self.board[building.x][building.y] =
+                        Square::from_player_number(&self.current_player_number, piece);
                 } else {
                     // incompatible piece for kartopult building
                     return Err(());
                 }
-            },
+            }
         };
 
         // Remove the potatos from the player
@@ -208,7 +175,9 @@ impl GameState {
 
         // Remove the pieces from the player
         // This function is unchecked since we already checked before
-        current_player.piece_counts.build_piece_unchecked(building.piece);
+        current_player
+            .piece_counts
+            .build_piece_unchecked(building.piece);
 
         Ok(self)
     }
@@ -257,7 +226,7 @@ impl Square {
 
     pub fn map_piece<F, R>(&self, function: F) -> Option<R>
     where
-        F: Fn(&Piece, PlayerNumber) -> R
+        F: Fn(&Piece, PlayerNumber) -> R,
     {
         match self {
             Self::Empty => None,
@@ -333,7 +302,7 @@ impl Default for PieceCounts {
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Round {
     pub builds: Vec<Building>,
-    pub kartopult_move: Vec<KartopultMove>,
+    pub kartopult_moves: Vec<KartopultMove>,
     pub kartopult_shots: Vec<KartopultShot>,
 }
 
@@ -369,7 +338,9 @@ impl Into<Piece> for BuildablePiece {
             Self::By => Piece::By(None),
             Self::Vej => Piece::Vej(None),
             Self::Mur => Piece::Mur,
-            Self::Kartopult(_) => panic!("can't turn a buildable kartopult into a piece, because you need to build it on another piece"),
+            Self::Kartopult(_) => panic!(
+                "can't turn a buildable kartopult into a piece, because you need to build it on another piece"
+            ),
         }
     }
 }
