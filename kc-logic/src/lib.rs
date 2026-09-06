@@ -20,11 +20,11 @@ impl GameState {
     }
 
     pub fn inbound_usize(&self, x: usize, y: usize) -> bool {
-        x >= self.board.len() || y >= self.board[0].len()
+        x < self.board.len() && y < self.board[0].len()
     }
 
     pub fn inbound_isize(&self, x: isize, y: isize) -> bool {
-        x < 0 || x >= self.board.len() as isize || y < 0 || y >= self.board[0].len() as isize
+        x >= 0 && x < self.board.len() as isize && y >= 0 && y < self.board[0].len() as isize
     }
 
     pub fn get_neighbors(&self, x: usize, y: usize) -> [Option<Square>; 4] {
@@ -602,8 +602,8 @@ pub enum KartopultPower {
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Direction {
-    Ret(DirectionDiagonal),
-    Diagonal(DirectionRet),
+    Ret(DirectionRet),
+    Diagonal(DirectionDiagonal),
 }
 
 impl Direction {
