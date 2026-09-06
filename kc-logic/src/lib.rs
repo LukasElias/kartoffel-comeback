@@ -268,6 +268,100 @@ impl GameState {
 
         Ok(())
     }
+
+    pub fn shoot_kartopult(&mut self, kartopult_shot: KartopultShot) -> Result<(), ()> {
+        // Check if player has enough potatos
+        let cost = kartopult_shot.power as usize;
+
+        if self.current_player().potato_count < cost {
+            return Err(());
+        }
+
+        // Check that the position has a kartopult
+        let kartopult = self.board[kartopult_shot.x][kartopult_shot.y]
+            .has_kartopult(self.current_player_number);
+        if kartopult.is_none() {
+            return Err(());
+        }
+
+        let kartopult = match kartopult.unwrap() {
+            Piece::Hovedby(Some(kartopult))
+            | Piece::By(Some(kartopult))
+            | Piece::Vej(Some(kartopult)) => kartopult,
+            _ => panic!("Should be impossible to get here"),
+        };
+
+        // Check that the kartopult and kartopult shot is the same direction
+        let is_same_direction = match kartopult_shot.direction {
+            Direction::Ret(_) => kartopult == Kartopult::Ret,
+            Direction::Diagonal(_) => kartopult == Kartopult::Diagonal,
+        };
+
+        if !is_same_direction {
+            return Err(());
+        }
+
+        let vector = kartopult_shot.direction.into_vector();
+
+        // Check the squares between the kartopult and the target are valid (no walls)
+        for power in 1..kartopult_shot.power as usize {
+            let x = kartopult_shot.x as isize + power as isize * vector.0;
+            let y = kartopult_shot.y as isize + power as isize * vector.1;
+
+            if !self.inbound_isize(x, y) {
+                return Err(());
+            }
+
+            let (x, y) = (x as usize, y as usize);
+
+            let square = self.board[x][y];
+
+            let is_wall = square
+                .map_piece(|piece, _| *piece == Piece::Mur)
+                .unwrap_or(false);
+
+            if is_wall {
+                return Err(());
+            }
+        }
+
+        // Check that the target is valid
+        let target_x = kartopult_shot.x as isize + kartopult_shot.power as isize * vector.0;
+        let target_y = kartopult_shot.y as isize + kartopult_shot.power as isize * vector.1;
+        if !self.inbound_isize(target_x, target_y) {
+            return Err(());
+        }
+
+        let target_square = &mut self.board[target_x as usize][target_y as usize];
+
+        let new_square: Option<Square> = target_square
+            .map_piece(|piece, player| {
+                if player == self.current_player_number {
+                    None
+                } else {
+                    match piece {
+                        Piece::Hovedby(_) => {
+                            Some(Square::from_player_number(player, Piece::ØdelagtHovedby))
+                        }
+                        Piece::By(_) | Piece::Vej(_) | Piece::Mur => Some(Square::Empty),
+                        Piece::ØdelagtHovedby => None,
+                    }
+                }
+            })
+            .unwrap_or(None);
+
+        if new_square.is_none() {
+            return Err(());
+        }
+
+        // Update the target square
+        *target_square = new_square.unwrap();
+
+        // Remove potatos
+        self.current_player_mut().potato_count -= cost;
+
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
@@ -510,6 +604,15 @@ pub enum KartopultPower {
 pub enum Direction {
     Ret(DirectionDiagonal),
     Diagonal(DirectionRet),
+}
+
+impl Direction {
+    pub fn into_vector(&self) -> (isize, isize) {
+        match self {
+            Self::Ret(direction) => direction.into_vector(),
+            Self::Diagonal(direction) => direction.into_vector(),
+        }
+    }
 }
 
 pub const ALL_DIRECTION_RET: [DirectionRet; 4] = [
