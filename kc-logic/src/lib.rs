@@ -19,6 +19,14 @@ impl GameState {
         &mut self.players[self.current_player_number as usize]
     }
 
+    pub fn inbound_usize(&self, x: usize, y: usize) -> bool {
+        x >= self.board.len() || y >= self.board[0].len()
+    }
+
+    pub fn inbound_isize(&self, x: isize, y: isize) -> bool {
+        x < 0 || x >= self.board.len() as isize || y < 0 || y >= self.board[0].len() as isize
+    }
+
     pub fn get_neighbors(&self, x: usize, y: usize) -> [Option<Square>; 4] {
         ALL_DIRECTION_RET.map(|direction| {
             let vector = direction.into_vector();
@@ -26,8 +34,7 @@ impl GameState {
             let x = x as isize + vector.0;
             let y = y as isize + vector.1;
 
-            if x < 0 || x >= self.board.len() as isize || y < 0 || y >= self.board[0].len() as isize
-            {
+            if self.inbound_isize(x, y) {
                 return None; // Maybe make another type later, for outofbounds errors and
                 // make it a result instead of option
             }
@@ -60,7 +67,7 @@ impl GameState {
         next_to_correct_piece
     }
 
-    pub fn build(mut self, building: Building) -> Result<Self, ()> {
+    pub fn build(&mut self, building: Building) -> Result<(), ()> {
         // Check that the player has enough potatos
         if self.current_player().potato_count < building.piece.cost() {
             return Err(());
@@ -72,7 +79,7 @@ impl GameState {
         }
 
         // Check that the building position is inside the boards bounds
-        if building.x >= self.board.len() || building.y >= self.board[0].len() {
+        if self.inbound_usize(building.x, building.y) {
             return Err(());
         };
 
@@ -96,7 +103,7 @@ impl GameState {
 
                 // Build
                 self.board[building.x][building.y] =
-                    Square::from_player_number(&self.current_player_number, building.piece.into())
+                    Square::from_player_number(self.current_player_number, building.piece.into())
             }
             BuildablePiece::Vej => {
                 let next_to_correct_piece =
@@ -117,7 +124,7 @@ impl GameState {
 
                 // Build
                 self.board[building.x][building.y] =
-                    Square::from_player_number(&self.current_player_number, building.piece.into())
+                    Square::from_player_number(self.current_player_number, building.piece.into())
             }
             BuildablePiece::Mur => {
                 let next_to_correct_piece =
@@ -140,7 +147,7 @@ impl GameState {
 
                 // Build
                 self.board[building.x][building.y] =
-                    Square::from_player_number(&self.current_player_number, building.piece.into())
+                    Square::from_player_number(self.current_player_number, building.piece.into())
             }
             BuildablePiece::Kartopult(kartopult) => {
                 let new_piece = self.board[building.x][building.y]
@@ -160,7 +167,7 @@ impl GameState {
                 if let Some(piece) = new_piece {
                     // Build
                     self.board[building.x][building.y] =
-                        Square::from_player_number(&self.current_player_number, piece);
+                        Square::from_player_number(self.current_player_number, piece);
                 } else {
                     // incompatible piece for kartopult building
                     return Err(());
@@ -179,7 +186,87 @@ impl GameState {
             .piece_counts
             .build_piece_unchecked(building.piece);
 
-        Ok(self)
+        Ok(())
+    }
+
+    pub fn move_kartopult(&mut self, kartopult_move: KartopultMove) -> Result<(), ()> {
+        let cost = kartopult_move.moves.len();
+
+        // Check if we have enough potatos
+        if self.current_player().potato_count < cost {
+            return Err(());
+        }
+
+        if !self.inbound_usize(kartopult_move.x, kartopult_move.y) {
+            return Err(());
+        }
+
+        // If no kartopult is at the start square, return error
+        let start_piece = self.board[kartopult_move.x][kartopult_move.y]
+            .has_kartopult(self.current_player_number);
+        if start_piece.is_none() {
+            return Err(());
+        }
+
+        let kartopult = match start_piece.unwrap() {
+            Piece::Hovedby(Some(kartopult))
+            | Piece::By(Some(kartopult))
+            | Piece::Vej(Some(kartopult)) => kartopult,
+            _ => panic!("Should be impossible to get here"),
+        };
+
+        let mut x = kartopult_move.x as isize;
+        let mut y = kartopult_move.y as isize;
+
+        for direction in kartopult_move.moves {
+            // Move to new square
+            let vector = direction.into_vector();
+
+            x += vector.0;
+            y += vector.1;
+
+            if !self.inbound_isize(x, y) {
+                return Err(());
+            }
+
+            // Check square
+            let square = self.board[x as usize][y as usize];
+
+            if square
+                .is_kartopult_friendly(self.current_player_number)
+                .is_none()
+            {
+                return Err(());
+            }
+        }
+
+        // Move the kartopult to the new place
+
+        // Place kartopult at end square
+        let (x, y) = (x as usize, y as usize);
+        self.board[x][y] = Square::from_player_number(
+            self.current_player_number,
+            self.board[x][y]
+                .is_kartopult_friendly(self.current_player_number)
+                .unwrap()
+                .place_kartopult(kartopult)
+                .unwrap(),
+        );
+
+        // Remove kartopult at start square
+        self.board[kartopult_move.x][kartopult_move.y] = Square::from_player_number(
+            self.current_player_number,
+            self.board[kartopult_move.x][kartopult_move.y]
+                .has_kartopult(self.current_player_number)
+                .unwrap()
+                .remove_kartopult()
+                .unwrap(),
+        );
+
+        // Remove the potatos from the player
+        self.current_player_mut().potato_count -= cost;
+
+        Ok(())
     }
 }
 
@@ -215,7 +302,7 @@ pub enum Square {
 }
 
 impl Square {
-    pub fn from_player_number(player: &PlayerNumber, piece: Piece) -> Self {
+    pub fn from_player_number(player: PlayerNumber, piece: Piece) -> Self {
         match player {
             PlayerNumber::PlayerOne => Square::PlayerOne(piece),
             PlayerNumber::PlayerTwo => Square::PlayerTwo(piece),
@@ -236,6 +323,38 @@ impl Square {
             Self::PlayerFour(piece) => Some(function(piece, PlayerNumber::PlayerFour)),
         }
     }
+
+    pub fn is_kartopult_friendly(&self, kartopult_player: PlayerNumber) -> Option<Piece> {
+        self.map_piece(|piece, square_player| {
+            if square_player == kartopult_player {
+                match piece {
+                    Piece::By(None) | Piece::Hovedby(None) | Piece::Vej(None) => {
+                        Some(piece.clone())
+                    }
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        })
+        .unwrap_or(None)
+    }
+
+    pub fn has_kartopult(&self, kartopult_player: PlayerNumber) -> Option<Piece> {
+        self.map_piece(|piece, square_player| {
+            if square_player == kartopult_player {
+                match piece {
+                    Piece::By(Some(_)) | Piece::Hovedby(Some(_)) | Piece::Vej(Some(_)) => {
+                        Some(piece.clone())
+                    }
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        })
+        .unwrap_or(None)
+    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
@@ -245,6 +364,26 @@ pub enum Piece {
     By(Option<Kartopult>),
     Vej(Option<Kartopult>),
     Mur,
+}
+
+impl Piece {
+    pub fn place_kartopult(&self, kartopult: Kartopult) -> Option<Piece> {
+        match self {
+            Self::Hovedby(None) => Some(Self::Hovedby(Some(kartopult))),
+            Self::By(None) => Some(Self::By(Some(kartopult))),
+            Self::Vej(None) => Some(Self::Vej(Some(kartopult))),
+            _ => None,
+        }
+    }
+
+    pub fn remove_kartopult(&self) -> Option<Piece> {
+        match self {
+            Self::Hovedby(Some(_)) => Some(Self::Hovedby(None)),
+            Self::By(Some(_)) => Some(Self::By(None)),
+            Self::Vej(Some(_)) => Some(Self::Vej(None)),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
