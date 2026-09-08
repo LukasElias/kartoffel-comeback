@@ -1,6 +1,6 @@
 use {
     serde::{Deserialize, Serialize},
-    std::default::Default,
+    std::{collections::VecDeque, default::Default},
 };
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -19,6 +19,10 @@ impl GameState {
         &mut self.players[self.current_player_number as usize]
     }
 
+    pub fn next_player(&self) -> PlayerNumber {
+        PlayerNumber::from(self.current_player_number as usize % self.players.len())
+    }
+
     pub fn inbound_usize(&self, x: usize, y: usize) -> bool {
         x < self.board.len() && y < self.board[0].len()
     }
@@ -27,7 +31,7 @@ impl GameState {
         x >= 0 && x < self.board.len() as isize && y >= 0 && y < self.board[0].len() as isize
     }
 
-    pub fn get_neighbors(&self, x: usize, y: usize) -> [Option<Square>; 4] {
+    pub fn get_neighbors(&self, x: usize, y: usize) -> [Option<(Square, usize, usize)>; 4] {
         ALL_DIRECTION_RET.map(|direction| {
             let vector = direction.into_vector();
 
@@ -39,7 +43,9 @@ impl GameState {
                 // make it a result instead of option
             }
 
-            Some(self.board[x as usize][y as usize])
+            let (x, y) = (x as usize, y as usize);
+
+            Some((self.board[x][y], x, y))
         })
     }
 
@@ -53,7 +59,7 @@ impl GameState {
 
         for neighbor in neighbor_squares {
             if let Some(neighbor) = neighbor {
-                let is_correct_piece = neighbor.map_piece(&is_correct_piece);
+                let is_correct_piece = neighbor.0.map_piece(&is_correct_piece);
 
                 if let Some(is_correct_piece) = is_correct_piece {
                     if is_correct_piece {
@@ -65,6 +71,140 @@ impl GameState {
         }
 
         next_to_correct_piece
+    }
+
+    pub fn get_hovedby(&self, player: PlayerNumber) -> [Option<(usize, usize)>; 4] {
+        let mut hovedby_squares = [None, None, None, None];
+        let mut n = 0;
+
+        for x in 0..self.board.len() {
+            for y in 0..self.board[0].len() {
+                let is_hovedby = self.board[x][y]
+                    .map_piece(|piece, square_player| {
+                        if square_player == player {
+                            match piece {
+                                Piece::Hovedby(_) => Some((x, y)),
+                                _ => None,
+                            }
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or(None);
+
+                if let Some(_) = is_hovedby {
+                    hovedby_squares[n] = is_hovedby;
+                    n += 1;
+                }
+            }
+        }
+
+        hovedby_squares
+    }
+
+    pub fn potatos_produced(&self) -> usize {
+        let mut potatos_produced = 0;
+
+        // Find the hovedby for the current player
+        let hovedby_squares = self.get_hovedby(self.current_player_number);
+
+        // Put the squares of the hovedby into a FIFO queue
+        let mut queue = VecDeque::<(usize, usize)>::new();
+
+        let mut visited = [[false; 20]; 20]; // 400 BYTES not bits, crazy
+
+        for hovedby in hovedby_squares {
+            if let Some(hovedby) = hovedby {
+                queue.push_front(hovedby);
+            } else {
+                break;
+            }
+        }
+
+        while !queue.is_empty() {
+            let square_position = queue.pop_back().unwrap();
+
+            let square = self.board[square_position.0][square_position.1];
+
+            // We can safely assume that this piece is either a Hovedby, By or Vej of the current
+            // player, since we only put those pieces into the queue.
+            let piece = square.map_piece(|piece, _| piece.clone()).unwrap();
+
+            match piece {
+                Piece::Hovedby(_) | Piece::By(_) => {
+                    let neighbors = self.get_neighbors(square_position.0, square_position.1);
+
+                    for neighbor in neighbors {
+                        // Validate and push to queue
+                        if let None = neighbor {
+                            continue;
+                        }
+
+                        let neighbor = neighbor.unwrap();
+
+                        let is_valid = neighbor
+                            .0
+                            .map_piece(|piece, player| {
+                                if player == self.current_player_number {
+                                    match piece {
+                                        Piece::Vej(_) => true,
+                                        _ => false,
+                                    }
+                                } else {
+                                    false
+                                }
+                            })
+                            .unwrap_or(false);
+
+                        let is_visited = visited[neighbor.1][neighbor.2];
+
+                        if is_valid && !is_visited {
+                            queue.push_front((neighbor.1, neighbor.2));
+                        }
+                    }
+
+                    potatos_produced += 1;
+                }
+                Piece::Vej(_) => {
+                    let neighbors = self.get_neighbors(square_position.0, square_position.1);
+
+                    for neighbor in neighbors {
+                        // Validate and push to queue
+                        if let None = neighbor {
+                            continue;
+                        }
+
+                        let neighbor = neighbor.unwrap();
+
+                        let is_valid = neighbor
+                            .0
+                            .map_piece(|piece, player| {
+                                if player == self.current_player_number {
+                                    match piece {
+                                        Piece::By(_) | Piece::Vej(_) => true,
+                                        _ => false,
+                                    }
+                                } else {
+                                    false
+                                }
+                            })
+                            .unwrap_or(false);
+
+                        let is_visited = visited[neighbor.1][neighbor.2];
+
+                        if is_valid && !is_visited {
+                            queue.push_front((neighbor.1, neighbor.2));
+                        }
+                    }
+                }
+                piece => panic!("A wrong piece got put into the BFS queue: {:?}", piece),
+            }
+
+            // Mark as visited
+            visited[square_position.0][square_position.1] = true;
+        }
+
+        potatos_produced
     }
 
     pub fn build(&mut self, building: Building) -> Result<(), ()> {
@@ -362,6 +502,49 @@ impl GameState {
 
         Ok(())
     }
+
+    pub fn apply_round(&self, round: Round) -> Result<Self, ()> {
+        let mut game_state = self.clone();
+
+        // Get potatos
+        let potatoes_produced = self.potatos_produced();
+
+        game_state.current_player_mut().potato_count += potatoes_produced;
+
+        // Build
+        for building in round.builds {
+            let result = game_state.build(building);
+
+            if result.is_err() {
+                return Err(());
+            }
+        }
+
+        // Move kartopults
+        for kartopult_move in round.kartopult_moves {
+            let result = game_state.move_kartopult(kartopult_move);
+
+            if result.is_err() {
+                return Err(());
+            }
+        }
+
+        // Shoot kartopults
+        for kartopult_shot in round.kartopult_shots {
+            let result = game_state.shoot_kartopult(kartopult_shot);
+
+            if result.is_err() {
+                return Err(());
+            }
+        }
+
+        // Check if any player dies
+
+        // Shift the current player
+        game_state.current_player_number = game_state.next_player();
+
+        Ok(game_state)
+    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
@@ -384,6 +567,18 @@ pub enum PlayerNumber {
     PlayerTwo = 1,
     PlayerThree = 2,
     PlayerFour = 3,
+}
+
+impl From<usize> for PlayerNumber {
+    fn from(value: usize) -> Self {
+        match value {
+            0 => PlayerNumber::PlayerOne,
+            1 => PlayerNumber::PlayerTwo,
+            2 => PlayerNumber::PlayerThree,
+            3 => PlayerNumber::PlayerFour,
+            x => panic!("{} is too big to turn into a PlayerNumber", x),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
