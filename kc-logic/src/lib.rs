@@ -6,21 +6,37 @@ use {
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct GameState {
     pub current_player_number: PlayerNumber,
-    pub players: Vec<Player>,
+    pub players: [Option<Player>; 4],
     pub board: [[Square; 20]; 20],
 }
 
 impl GameState {
     pub fn current_player(&self) -> &Player {
-        &self.players[self.current_player_number as usize]
+        let current_player = &self.players[self.current_player_number as usize];
+
+        current_player
+            .as_ref()
+            .expect("the current player is dead and didn't get switched to a new player")
     }
 
     pub fn current_player_mut(&mut self) -> &mut Player {
-        &mut self.players[self.current_player_number as usize]
+        let current_player = &mut self.players[self.current_player_number as usize];
+
+        current_player
+            .as_mut()
+            .expect("the current player is dead and didn't get switched to a new player")
     }
 
     pub fn next_player(&self) -> PlayerNumber {
-        PlayerNumber::from(self.current_player_number as usize % self.players.len())
+        let mut n = (self.current_player_number as usize + 1) % 4;
+
+        // Find the next time an alive player is in the game and return that PlayerNumber
+        // corresponding with the index.
+        while let None = self.players[n] {
+            n += 1;
+        }
+
+        PlayerNumber::from(n)
     }
 
     pub fn inbound_usize(&self, x: usize, y: usize) -> bool {
@@ -73,28 +89,32 @@ impl GameState {
         next_to_correct_piece
     }
 
-    pub fn get_hovedby(&self, player: PlayerNumber) -> [Option<(usize, usize)>; 4] {
-        let mut hovedby_squares = [None, None, None, None];
-        let mut n = 0;
+    pub fn get_hovedbyer(&self) -> [[Option<(usize, usize)>; 4]; 4] {
+        let mut hovedby_squares = [[None; 4]; 4];
+        let mut n = [0; 4];
 
         for x in 0..self.board.len() {
             for y in 0..self.board[0].len() {
-                let is_hovedby = self.board[x][y]
-                    .map_piece(|piece, square_player| {
-                        if square_player == player {
-                            match piece {
-                                Piece::Hovedby(_) => Some((x, y)),
-                                _ => None,
-                            }
-                        } else {
-                            None
+                let hovedby: Option<(usize, usize, PlayerNumber)> = self.board[x][y]
+                    .map_piece(|piece, player| {
+                        let is_hovedby = match piece {
+                            Piece::Hovedby(_) => true,
+                            _ => false,
+                        };
+
+                        if !is_hovedby {
+                            return None;
                         }
+
+                        Some((x, y, player))
                     })
                     .unwrap_or(None);
 
-                if let Some(_) = is_hovedby {
-                    hovedby_squares[n] = is_hovedby;
-                    n += 1;
+                if let Some(hovedby) = hovedby {
+                    let player = hovedby.2 as usize;
+
+                    hovedby_squares[player][n[player]] = Some((hovedby.0, hovedby.1));
+                    n[player] += 1;
                 }
             }
         }
@@ -106,7 +126,7 @@ impl GameState {
         let mut potatos_produced = 0;
 
         // Find the hovedby for the current player
-        let hovedby_squares = self.get_hovedby(self.current_player_number);
+        let hovedby_squares = self.get_hovedbyer()[self.current_player_number as usize];
 
         // Put the squares of the hovedby into a FIFO queue
         let mut queue = VecDeque::<(usize, usize)>::new();
@@ -539,6 +559,21 @@ impl GameState {
         }
 
         // Check if any player dies
+        let hovedbyer = game_state.get_hovedbyer();
+
+        for (i, players_hovedby) in hovedbyer.iter().enumerate() {
+            let mut is_alive = false;
+
+            for hovedby_square in players_hovedby {
+                if hovedby_square.is_some() {
+                    is_alive = true;
+                }
+            }
+
+            if !is_alive {
+                game_state.players[i] = None;
+            }
+        }
 
         // Shift the current player
         game_state.current_player_number = game_state.next_player();
