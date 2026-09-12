@@ -1,7 +1,46 @@
 use {
     serde::{Deserialize, Serialize},
-    std::{collections::VecDeque, default::Default},
+    std::{collections::VecDeque, default::Default, fmt::Display},
 };
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+pub enum GameError {
+    OutOfBounds(isize, isize),
+    NotEnoughPotatos(usize, usize),
+    NotEnoughPieces(BuildablePiece, PieceCounts),
+    BuildError,
+    KartopultMoveError,
+    KartopultShootError,
+}
+
+impl std::error::Error for GameError {}
+
+impl Display for GameError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::OutOfBounds(x, y) => write!(
+                f,
+                "an out_of_bounds error occured with coordinates {}, {}",
+                x, y
+            ),
+            Self::NotEnoughPotatos(potato_count, cost) => write!(
+                f,
+                "not enough potatos, potato count: {}, cost: {}",
+                potato_count, cost
+            ),
+            Self::NotEnoughPieces(piece, piece_counts) => write!(
+                f,
+                "not enough pieces, piece: {:?}, pieces_left: {:?}",
+                piece, piece_counts
+            ),
+            Self::BuildError => write!(f, "a build-related error occured"),
+            Self::KartopultMoveError => write!(f, "an error occured when trying to move kartopult"),
+            Self::KartopultShootError => {
+                write!(f, "an error occured when trying to shoot kartopult")
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct GameState {
@@ -27,16 +66,15 @@ impl GameState {
             .expect("the current player is dead and didn't get switched to a new player")
     }
 
-    pub fn next_player(&self) -> PlayerNumber {
-        let mut n = (self.current_player_number as usize + 1) % 4;
+    pub fn next_player(&self) -> Option<PlayerNumber> {
+        let start_idx = (self.current_player_number as usize + 1) % 4;
 
-        // Find the next time an alive player is in the game and return that PlayerNumber
-        // corresponding with the index.
-        while let None = self.players[n] {
-            n += 1;
-        }
-
-        PlayerNumber::from(n)
+        // Find the next alive player is in the game and return that PlayerNumber
+        // If no other player is in the game, this returns None, so you've probably won
+        (0..3)
+            .map(|i| (start_idx + i) % 4)
+            .find(|&idx| self.players[idx].is_some())
+            .map(PlayerNumber::from)
     }
 
     pub fn inbound_usize(&self, x: usize, y: usize) -> bool {
@@ -227,20 +265,29 @@ impl GameState {
         potatos_produced
     }
 
-    pub fn build(&mut self, building: Building) -> Result<(), ()> {
+    pub fn build(&mut self, building: Building) -> Result<(), GameError> {
         // Check that the player has enough potatos
         if self.current_player().potato_count < building.piece.cost() {
-            return Err(());
+            return Err(GameError::NotEnoughPotatos(
+                self.current_player().potato_count,
+                building.piece.cost(),
+            ));
         }
 
         // Check that the player has enough pieces
         if !self.current_player().piece_counts.can_build(building.piece) {
-            return Err(());
+            return Err(GameError::NotEnoughPieces(
+                building.piece,
+                self.current_player().piece_counts,
+            ));
         }
 
         // Check that the building position is inside the boards bounds
         if self.inbound_usize(building.x, building.y) {
-            return Err(());
+            return Err(GameError::OutOfBounds(
+                building.x as isize,
+                building.y as isize,
+            ));
         };
 
         match building.piece {
@@ -258,7 +305,7 @@ impl GameState {
                     });
 
                 if !next_to_correct_piece || self.board[building.x][building.y] != Square::Empty {
-                    return Err(());
+                    return Err(GameError::BuildError);
                 }
 
                 // Build
@@ -279,7 +326,7 @@ impl GameState {
                     });
 
                 if !next_to_correct_piece || self.board[building.x][building.y] != Square::Empty {
-                    return Err(());
+                    return Err(GameError::BuildError);
                 }
 
                 // Build
@@ -302,7 +349,7 @@ impl GameState {
                     });
 
                 if !next_to_correct_piece || self.board[building.x][building.y] != Square::Empty {
-                    return Err(());
+                    return Err(GameError::BuildError);
                 }
 
                 // Build
@@ -330,7 +377,7 @@ impl GameState {
                         Square::from_player_number(self.current_player_number, piece);
                 } else {
                     // incompatible piece for kartopult building
-                    return Err(());
+                    return Err(GameError::BuildError);
                 }
             }
         };
@@ -349,23 +396,29 @@ impl GameState {
         Ok(())
     }
 
-    pub fn move_kartopult(&mut self, kartopult_move: KartopultMove) -> Result<(), ()> {
+    pub fn move_kartopult(&mut self, kartopult_move: KartopultMove) -> Result<(), GameError> {
         let cost = kartopult_move.moves.len();
 
         // Check if we have enough potatos
         if self.current_player().potato_count < cost {
-            return Err(());
+            return Err(GameError::NotEnoughPotatos(
+                self.current_player().potato_count,
+                cost,
+            ));
         }
 
         if !self.inbound_usize(kartopult_move.x, kartopult_move.y) {
-            return Err(());
+            return Err(GameError::OutOfBounds(
+                kartopult_move.x as isize,
+                kartopult_move.y as isize,
+            ));
         }
 
         // If no kartopult is at the start square, return error
         let start_piece = self.board[kartopult_move.x][kartopult_move.y]
             .has_kartopult(self.current_player_number);
         if start_piece.is_none() {
-            return Err(());
+            return Err(GameError::KartopultMoveError);
         }
 
         let kartopult = match start_piece.unwrap() {
@@ -386,7 +439,7 @@ impl GameState {
             y += vector.1;
 
             if !self.inbound_isize(x, y) {
-                return Err(());
+                return Err(GameError::OutOfBounds(x, y));
             }
 
             // Check square
@@ -396,7 +449,7 @@ impl GameState {
                 .is_kartopult_friendly(self.current_player_number)
                 .is_none()
             {
-                return Err(());
+                return Err(GameError::KartopultMoveError);
             }
         }
 
@@ -429,19 +482,22 @@ impl GameState {
         Ok(())
     }
 
-    pub fn shoot_kartopult(&mut self, kartopult_shot: KartopultShot) -> Result<(), ()> {
+    pub fn shoot_kartopult(&mut self, kartopult_shot: KartopultShot) -> Result<(), GameError> {
         // Check if player has enough potatos
         let cost = kartopult_shot.power as usize;
 
         if self.current_player().potato_count < cost {
-            return Err(());
+            return Err(GameError::NotEnoughPotatos(
+                self.current_player().potato_count,
+                cost,
+            ));
         }
 
         // Check that the position has a kartopult
         let kartopult = self.board[kartopult_shot.x][kartopult_shot.y]
             .has_kartopult(self.current_player_number);
         if kartopult.is_none() {
-            return Err(());
+            return Err(GameError::KartopultShootError);
         }
 
         let kartopult = match kartopult.unwrap() {
@@ -458,7 +514,7 @@ impl GameState {
         };
 
         if !is_same_direction {
-            return Err(());
+            return Err(GameError::KartopultShootError);
         }
 
         let vector = kartopult_shot.direction.into_vector();
@@ -469,7 +525,7 @@ impl GameState {
             let y = kartopult_shot.y as isize + power as isize * vector.1;
 
             if !self.inbound_isize(x, y) {
-                return Err(());
+                return Err(GameError::OutOfBounds(x, y));
             }
 
             let (x, y) = (x as usize, y as usize);
@@ -481,7 +537,7 @@ impl GameState {
                 .unwrap_or(false);
 
             if is_wall {
-                return Err(());
+                return Err(GameError::KartopultShootError);
             }
         }
 
@@ -489,7 +545,7 @@ impl GameState {
         let target_x = kartopult_shot.x as isize + kartopult_shot.power as isize * vector.0;
         let target_y = kartopult_shot.y as isize + kartopult_shot.power as isize * vector.1;
         if !self.inbound_isize(target_x, target_y) {
-            return Err(());
+            return Err(GameError::OutOfBounds(target_x, target_y));
         }
 
         let target_square = &mut self.board[target_x as usize][target_y as usize];
@@ -511,7 +567,7 @@ impl GameState {
             .unwrap_or(None);
 
         if new_square.is_none() {
-            return Err(());
+            return Err(GameError::KartopultShootError);
         }
 
         // Update the target square
@@ -523,7 +579,7 @@ impl GameState {
         Ok(())
     }
 
-    pub fn apply_round(&self, round: Round) -> Result<Self, ()> {
+    pub fn apply_round(&self, round: Round) -> Result<(Self, bool), GameError> {
         let mut game_state = self.clone();
 
         // Get potatos
@@ -533,29 +589,17 @@ impl GameState {
 
         // Build
         for building in round.builds {
-            let result = game_state.build(building);
-
-            if result.is_err() {
-                return Err(());
-            }
+            game_state.build(building)?;
         }
 
         // Move kartopults
         for kartopult_move in round.kartopult_moves {
-            let result = game_state.move_kartopult(kartopult_move);
-
-            if result.is_err() {
-                return Err(());
-            }
+            game_state.move_kartopult(kartopult_move)?;
         }
 
         // Shoot kartopults
         for kartopult_shot in round.kartopult_shots {
-            let result = game_state.shoot_kartopult(kartopult_shot);
-
-            if result.is_err() {
-                return Err(());
-            }
+            game_state.shoot_kartopult(kartopult_shot)?;
         }
 
         // Check if any player dies
@@ -575,10 +619,15 @@ impl GameState {
             }
         }
 
-        // Shift the current player
-        game_state.current_player_number = game_state.next_player();
+        let mut did_win = false;
 
-        Ok(game_state)
+        // Shift the current player or check if the current player won
+        match game_state.next_player() {
+            Some(next_player) => game_state.current_player_number = next_player,
+            None => did_win = true,
+        }
+
+        Ok((game_state, did_win))
     }
 }
 
