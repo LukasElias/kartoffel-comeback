@@ -50,6 +50,63 @@ pub struct GameState {
 }
 
 impl GameState {
+    pub fn new(player_count: usize) -> Self {
+        if player_count < 2 || player_count > 4 {
+            panic!("tried making a new game with {} players", player_count);
+        }
+
+        let mut players = [None; 4];
+
+        for i in 0..player_count {
+            players[i] = Some(Player::default());
+        }
+
+        let mut board = [[Square::Empty; 20]; 20];
+        // The order in which we want to put players onto the boards corners
+        let corners = [
+            DirectionDiagonal::DownLeft,
+            DirectionDiagonal::UpRight,
+            DirectionDiagonal::DownRight,
+            DirectionDiagonal::UpLeft,
+        ];
+
+        for (player_number, corner) in corners.iter().enumerate() {
+            let player_number = PlayerNumber::from(player_number);
+
+            let coordinates = match corner {
+                DirectionDiagonal::UpLeft => [(1, 1), (2, 1), (1, 2), (2, 2)],
+                DirectionDiagonal::UpRight => [
+                    (board.len() - 3, 1),
+                    (board.len() - 2, 1),
+                    (board.len() - 3, 2),
+                    (board.len() - 2, 2),
+                ],
+                DirectionDiagonal::DownLeft => [
+                    (1, board[0].len() - 3),
+                    (2, board[0].len() - 3),
+                    (1, board[0].len() - 2),
+                    (2, board[0].len() - 2),
+                ],
+                DirectionDiagonal::DownRight => [
+                    (board.len() - 3, board[0].len() - 3),
+                    (board.len() - 2, board[0].len() - 3),
+                    (board.len() - 3, board[0].len() - 2),
+                    (board.len() - 2, board[0].len() - 2),
+                ],
+            };
+
+            for (x, y) in coordinates {
+                board[x][y] = Square::from_player_number(player_number, Piece::Hovedby(None));
+            }
+        }
+
+        Self {
+            current_player_number: PlayerNumber::PlayerOne,
+            players,
+            board,
+        }
+    }
+
     pub fn current_player(&self) -> &Player {
         let current_player = &self.players[self.current_player_number as usize];
 
@@ -631,11 +688,18 @@ impl GameState {
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Default, Serialize, Deserialize)]
 pub struct Player {
-    pub preferred_color: Color,
     pub potato_count: usize,
     pub piece_counts: PieceCounts,
+}
+
+// Used for communicating between server and client in a lobby.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PlayerStatus {
+    pub is_ready: bool,
+    pub preferred_color: Color,
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]

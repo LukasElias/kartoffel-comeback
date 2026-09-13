@@ -4,3 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+kc-logic = { path = "../kc-logic" }
+serde = "1.0.229"
+serde_json = "1.0.151"
