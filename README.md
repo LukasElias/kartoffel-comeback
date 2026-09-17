@@ -103,3 +103,11 @@ Efter man har skudt i en runde må man ikke flytte sine kartopulter mere.
 ## Hvordan vinder og taber man?
 
 Man ryger ud af spillet hvis man mister alle fire felter af sin hovedby og man vinder ved at være den sidste tilbage.
+
+
+
+# Silas nye regler kartoffel comeback 2.1
+- Hvis du ødelægger nogle brikker, der koster 30 kartofler tilsammen, vinder man?
+- Man kan fjerne sin egne veje
+- Nyt start-positioner for 3-personer
+- Murer kan man godt skyde over
