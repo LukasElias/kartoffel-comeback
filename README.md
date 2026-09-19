@@ -110,4 +110,5 @@ Man ryger ud af spillet hvis man mister alle fire felter af sin hovedby og man v
 - Hvis du ødelægger nogle brikker, der koster 30 kartofler tilsammen, vinder man?
 - Man kan fjerne sin egne veje
 - Nyt start-positioner for 3-personer
-- Murer kan man godt skyde over
+- Murer kan man godt skyde over hvis det er ens egne
+- Man må gerne skyde flere gange med samme kartopults i en runde
