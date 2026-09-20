@@ -34,7 +34,7 @@ Kartopulter har to typer, en der skyder diagonalt, og en der skyder vandret og l
 - Fylder 1 felt.
 - Hver spiller har 5 kartopulter af hver type.
 - Koster 3 kartofler at bygge.
-- Hver runde kan man flytte sine kartopulter og angribe med dem. (læs mere i sektionen om brug af kartopulter)
+- Hver runde kan man flytte sine kartopulter og angribe med dem. (læs mere i sektionenerne [Flyt kartopulter](#flyt-kartopulter) og [Skyde med kartopulter](#skyde-med-kartopulter))
 - Man kan bygge en kartopult oven på en by eller hovedby.
 
 ### Vej
@@ -50,7 +50,8 @@ Kartopulter har to typer, en der skyder diagonalt, og en der skyder vandret og l
 - Hver spiller har 10 mure.
 - Koster 1 kartoffel at lave.
 - Man må bygge en mur ved siden af en vej, by, hovedby eller anden mur.
-- Man kan ikke skyde over en mur med en kartopult, så man skal angribe muren først. Man kan heller ikke skyde over sine egne mure.
+- Man kan ikke skyde over en mur med en kartopult, så man skal angribe muren først.
+- Man kan godt skyde over sine egne mure.
 
 ## Bræt
 
@@ -73,13 +74,17 @@ XX..┃
 ━━━━┛
 ```
 
+Derefter giver man 10 kartofler til hver spiller.
+
 ## Runde
 
-Hver runde har 3 dele:
+Hver runde har 5 dele:
 
 1. Udbetaling af kartofler
 2. Byggefasen
-3. Brug af kartopulter
+3. Sælgefasen
+4. Flyt kartopulter
+5. Skyde med kartopulter
 
 ### Udbetaling af kartofler
 
@@ -91,11 +96,24 @@ Derefter finder man alle dine byer der er forbundet med hovedbyen. De giver 1 ka
 
 I byggefasen kan man bygge så mange veje, byer, kartopulter og mure som man vil, reglerne for hvor de kan bygges står under hver brik. Du skal betale for hver ting du bygger. Man kan også gå direkte videre til at bruge sine kartopulter.
 
-### Brug af kartopulter
+### Sælgefasen
 
-Hver runde efter man har bygget kan man flytte sine kartopulter så meget man vil, det koster 1 kartoffel per felt man flytter en kartopult. Man må ikke have to kartopulter oven på hinanden og heller ikke flytte en kartopult over en anden.
+Hvis du gerne vil fjerne nogle brikker du har bygget, kan du sælge dem og få dem tilbage så du kan bygge dem et andet sted. Du vil få halvdelen af hvad brikken koster at bygge, tilbage. Hvis det er et ulige tal, runder man ned.
 
-Efter man har flyttet sine kartopulter må man skyde en gang per kartopult per runde. Man må skyde enten lodret og vandret eller diagonalt alt efter hvilken type kartopult man skyder med.
+| Brik      | Sælgeværdi |
+| --------- | ---------- |
+| By        | 2          |
+| Kartopult | 1          |
+| Vej       | 0          |
+| Mur       | 0          |
+
+### Flyt kartopulter
+
+Man kan flytte sine kartopulter så meget man vil, det koster 1 kartoffel per felt man flytter en kartopult. Man må ikke have to kartopulter oven på hinanden og heller ikke flytte en kartopult over en anden.
+
+### Skyde med kartopulter
+
+Efter man har flyttet sine kartopulter må man skyde så mange gange man vil. Man må skyde enten lodret og vandret eller diagonalt alt efter hvilken type kartopult man skyder med.
 Man kan skyde op til 3 felter i den retning, men jo længere man skyder jo mere koster det. Det koster 1 kartoffel per felt man skyder. Så 1 felt er en kartoffel, 2 felter er 2 kartofler og 3 felter er 3 kartofler.
 
 Efter man har skudt i en runde må man ikke flytte sine kartopulter mere.
@@ -107,8 +125,4 @@ Man ryger ud af spillet hvis man mister alle fire felter af sin hovedby og man v
 
 
 # Silas nye regler kartoffel comeback 2.1
-- Hvis du ødelægger nogle brikker, der koster 30 kartofler tilsammen, vinder man?
-- Man kan fjerne sin egne veje
-- Nyt start-positioner for 3-personer
-- Murer kan man godt skyde over hvis det er ens egne
-- Man må gerne skyde flere gange med samme kartopults i en runde
+- Ny start-position for 3-personer (WIP)
