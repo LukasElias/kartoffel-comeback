@@ -73,22 +73,25 @@ enum ConnectionType {
     Spectator(SpectatorConnection),
 }
 
-struct ServerGame {
-    game_state: GameState,
+struct ServerLobby {
     players: Vec<PlayerConnection>,
     spectators: Vec<SpectatorConnection>,
+    listener: TcpListener,
 }
 
-impl ServerGame {
+impl ServerLobby {
     async fn new(listener: TcpListener) -> Self {
-        let mut players = Vec::new();
-        let mut spectators = Vec::new();
+        let mut lobby = Self {
+            players: Vec::new(),
+            spectators: Vec::new(),
+            listener,
+        };
 
         loop {
             // TODO: Make the parts of this loop a seperate function
             // Handle incoming connections
 
-            if let Ok((stream, _address)) = listener.accept().await {
+            if let Ok((stream, _address)) = lobby.listener.accept().await {
                 let mut buf_reader = io::BufReader::new(stream.clone());
 
                 let mut buf = String::new();
@@ -117,19 +120,19 @@ impl ServerGame {
 
                         let player_connection = PlayerConnection { status, connection };
 
-                        players.push(player_connection);
+                        lobby.players.push(player_connection);
                     } else if buf.contains("spectator") {
                         let spectator_connection = SpectatorConnection { connection };
 
-                        spectators.push(spectator_connection);
+                        lobby.spectators.push(spectator_connection);
                     }
                 }
             }
 
             // Send out heartbeats
 
-            for i in 0..spectators.len() {
-                let spectator_connection = &mut spectators[i];
+            for i in 0..lobby.spectators.len() {
+                let spectator_connection = &mut lobby.spectators[i];
                 let result = spectator_connection.connection.ping().await;
 
                 if let Err(error) = result {
@@ -146,7 +149,7 @@ impl ServerGame {
                         | io::ErrorKind::WriteZero => {
                             // Connection broken
 
-                            spectators.remove(i);
+                            lobby.spectators.remove(i);
                         }
                         _ => (),
                     }
@@ -157,10 +160,10 @@ impl ServerGame {
 
             let mut status_update = false;
 
-            for i in 0..players.len() {
+            for i in 0..lobby.players.len() {
                 // TODO: WHen we remove elements from the players and spectator vectors, the index
                 // will end out of bounds at the end.
-                let player_connection = &mut players[i];
+                let player_connection = &mut lobby.players[i];
                 // If a pong is waiting call ping
                 if !player_connection.connection.pong_recieved {
                     let result = player_connection.connection.ping().await;
@@ -179,7 +182,7 @@ impl ServerGame {
                             | io::ErrorKind::WriteZero => {
                                 // Connection broken
 
-                                players.remove(i);
+                                lobby.players.remove(i);
                                 continue;
                             }
                             _ => (),
@@ -206,47 +209,94 @@ impl ServerGame {
             // If any new status we send out a message to everyone
             if status_update {
                 let status_json = serde_json::to_vec(
-                    &players
+                    &lobby.players
                         .iter()
                         .map(|player| player.status.clone())
                         .collect::<Vec<PlayerStatus>>(),
                 )
                 .unwrap();
 
-                for player in &mut players {
-                    player
-                        .connection
-                        .stream
-                        .write_all(&status_json)
-                        .await
-                        .unwrap();
-                }
-
-                for spectator in &mut spectators {
-                    spectator
-                        .connection
-                        .stream
-                        .write_all(&status_json)
-                        .await
-                        .unwrap();
-                }
+                lobby.write_to_all(&status_json).await.unwrap();
             }
 
             // If the game is ready to start, break out of the loop
-            if players.len() >= 2
-                && players.len() <= 4
-                && players.iter().all(|player| player.status.is_ready)
+            if lobby.players.len() >= 2
+                && lobby.players.len() <= 4
+                && lobby.players.iter().all(|player| player.status.is_ready)
             {
                 break;
             }
         }
 
-        let game_state = GameState::new(players.len());
+        lobby
+    }
+
+    async fn write_to_all(&mut self, buf: &[u8]) -> smol::io::Result<()> {
+        for player in &mut self.players {
+            player
+                .connection
+                .stream
+                .write_all(buf)
+                .await?;
+        }
+
+        for spectator in &mut self.spectators {
+            spectator
+                .connection
+                .stream
+                .write_all(buf)
+                .await?;
+        }
+
+        Ok(())
+    }
+}
+
+struct ServerGame {
+    game_state: GameState,
+    lobby: ServerLobby,
+}
+
+impl ServerGame {
+    async fn new(listener: TcpListener) -> Self {
+        let lobby = ServerLobby::new(listener).await;
+
+        let game_state = GameState::new(lobby.players.len());
 
         Self {
             game_state,
-            players,
-            spectators,
+            lobby,
+        }
+    }
+
+    fn current_player_connection(&self) -> &PlayerConnection {
+        &self.lobby.players[self.game_state.current_player_number as usize]
+    }
+
+    fn current_player_connection_mut(&mut self) -> &mut PlayerConnection {
+        &mut self.lobby.players[self.game_state.current_player_number as usize]
+    }
+
+    async fn run(&mut self) {
+        // Let everybody know the current state of the game
+
+        let game_state_json = serde_json::to_vec(&self.game_state).unwrap();
+
+        self.lobby.write_to_all(&game_state_json).await.unwrap();
+
+        let mut player_move_pending = false;
+
+        loop {
+            // Ask the current player for a move.
+            if !player_move_pending {
+                let current_player = self.current_player_connection_mut();
+            }
+            // When the player answers validate the move
+            // If we can't use it ask again.
+            // If it's valid we apply it and send out the new game state to everybody
+
+            // Send out heartbeats.
+            break;
         }
     }
 }
@@ -255,7 +305,9 @@ fn main() {
     smol::block_on(async {
         let listener = TcpListener::bind("127.0.0.1:10799").await?;
 
-        let mut server_game = ServerGame::new(listener);
+        let mut server_game = ServerGame::new(listener).await;
+
+        server_game.run().await;
 
         Ok::<(), smol::io::Error>(())
     })
