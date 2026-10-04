@@ -1,9 +1,11 @@
 use {
-    kc_logic::*, smol::{
+    kc_logic::*,
+    smol::{
         io,
         net::{TcpListener, TcpStream},
         prelude::*,
-    }, std::time::{Duration, Instant},
+    },
+    std::time::{Duration, Instant},
 };
 
 struct Connection {
@@ -58,8 +60,7 @@ impl Connection {
             eprintln!("{}", error);
         }
 
-        buf
-            .split("\n")
+        buf.split("\n")
             .filter_map(|line| serde_json::from_str::<ClientMessage>(line).ok())
             .collect()
     }
@@ -138,13 +139,13 @@ impl ServerLobby {
                         ClientMessage::Status(player_status) => {
                             lobby.players[idx].status = player_status;
                             status_update = true;
-                        },
+                        }
                         ClientMessage::Downgrade => lobby.downgrade_player(idx),
                         ClientMessage::Upgrade(_player_status) => (), //ignore here since it's a
-                                                                     //player not a spectator
+                        //player not a spectator
                         ClientMessage::Disconnected => {
                             lobby.players.remove(idx);
-                        },
+                        }
                     }
                 }
 
@@ -161,15 +162,19 @@ impl ServerLobby {
 
                 for message in client_messages {
                     match message {
-                        ClientMessage::Pong => lobby.spectators[idx].connection.pong_recieved = true,
+                        ClientMessage::Pong => {
+                            lobby.spectators[idx].connection.pong_recieved = true
+                        }
                         ClientMessage::Round(_round) => (), // ignore since the spectators don't
-                                                            // send rounds
+                        // send rounds
                         ClientMessage::Status(_player_status) => (), // ignore since it's a spectator
                         ClientMessage::Downgrade => (), // ignore because it's a spectator
-                        ClientMessage::Upgrade(player_status) => lobby.upgrade_spectator(idx, player_status),
+                        ClientMessage::Upgrade(player_status) => {
+                            lobby.upgrade_spectator(idx, player_status)
+                        }
                         ClientMessage::Disconnected => {
                             lobby.spectators.remove(idx);
-                        },
+                        }
                     }
                 }
 
@@ -183,21 +188,34 @@ impl ServerLobby {
 
             // If any new status we send out a message to everyone
             if status_update {
-                let player_status = lobby.players
+                let player_status = lobby
+                    .players
                     .iter()
                     .map(|player| player.status.clone())
                     .collect::<Vec<PlayerStatus>>();
 
                 // send out to spectators
-                let buf = serde_json::to_vec(&ServerMessage::StatusUpdateSpectator(player_status.clone())).unwrap();
+                let buf = serde_json::to_vec(&ServerMessage::StatusUpdateSpectator(
+                    player_status.clone(),
+                ))
+                .unwrap();
                 lobby.write_to_spectators(&buf).await.unwrap();
 
                 // write to players
                 for idx in 0..lobby.players.len() {
                     let player_number = PlayerNumber::from(idx);
 
-                    let buf = serde_json::to_vec(&ServerMessage::StatusUpdatePlayer(player_status.clone(), player_number)).unwrap();
-                    lobby.players[idx].connection.stream.write_all(&buf).await.unwrap();
+                    let buf = serde_json::to_vec(&ServerMessage::StatusUpdatePlayer(
+                        player_status.clone(),
+                        player_number,
+                    ))
+                    .unwrap();
+                    lobby.players[idx]
+                        .connection
+                        .stream
+                        .write_all(&buf)
+                        .await
+                        .unwrap();
                 }
             }
 
@@ -219,11 +237,7 @@ impl ServerLobby {
         // I gotta handle that gracefully.
 
         for player in &mut self.players {
-            player
-                .connection
-                .stream
-                .write_all(buf)
-                .await?;
+            player.connection.stream.write_all(buf).await?;
         }
 
         Ok(())
@@ -235,11 +249,7 @@ impl ServerLobby {
         // I gotta handle that gracefully.
 
         for spectator in &mut self.spectators {
-            spectator
-                .connection
-                .stream
-                .write_all(buf)
-                .await?;
+            spectator.connection.stream.write_all(buf).await?;
         }
 
         Ok(())
@@ -264,10 +274,7 @@ impl ServerGame {
 
         let game_state = GameState::new(lobby.players.len());
 
-        Self {
-            game_state,
-            lobby,
-        }
+        Self { game_state, lobby }
     }
 
     fn current_player_connection(&self) -> &PlayerConnection {
@@ -284,28 +291,40 @@ impl ServerGame {
         match game_state_result {
             Err(error) => {
                 eprintln!("{}", error);
-                
+
                 // Ask for a round again
 
                 let buf = serde_json::to_vec(&ServerMessage::YourTurn).unwrap();
-                self.current_player_connection_mut().connection.stream.write_all(&buf).await.unwrap();
-            },
+                self.current_player_connection_mut()
+                    .connection
+                    .stream
+                    .write_all(&buf)
+                    .await
+                    .unwrap();
+            }
             Ok((game_state, did_win)) => {
                 let player_that_won = match did_win {
                     true => Some(game_state.current_player_number),
                     false => None,
                 };
 
-                let buf = serde_json::to_vec(&ServerMessage::GameState(game_state, player_that_won)).unwrap();
+                let buf =
+                    serde_json::to_vec(&ServerMessage::GameState(game_state, player_that_won))
+                        .unwrap();
                 self.lobby.write_to_all(&buf).await.unwrap();
 
                 if !did_win {
                     let buf = serde_json::to_vec(&ServerMessage::YourTurn).unwrap();
-                    self.current_player_connection_mut().connection.stream.write_all(&buf).await.unwrap();
+                    self.current_player_connection_mut()
+                        .connection
+                        .stream
+                        .write_all(&buf)
+                        .await
+                        .unwrap();
                 }
 
                 return did_win;
-            },
+            }
         }
 
         false
@@ -321,7 +340,12 @@ impl ServerGame {
         // Tell the current player it's their turn
         let current_player = self.current_player_connection_mut();
         let buf = serde_json::to_vec(&ServerMessage::YourTurn).unwrap();
-        current_player.connection.stream.write_all(&buf).await.unwrap();
+        current_player
+            .connection
+            .stream
+            .write_all(&buf)
+            .await
+            .unwrap();
 
         loop {
             // Handle incoming messages and send out pings
@@ -330,22 +354,25 @@ impl ServerGame {
 
                 for message in client_messages {
                     match message {
-                        ClientMessage::Pong => self.lobby.players[idx].connection.pong_recieved = true,
+                        ClientMessage::Pong => {
+                            self.lobby.players[idx].connection.pong_recieved = true
+                        }
                         ClientMessage::Round(round) => {
                             if PlayerNumber::from(idx) == self.game_state.current_player_number {
-                                if self.apply_round(round).await { // a player won
+                                if self.apply_round(round).await {
+                                    // a player won
                                     return;
                                 }
                             }
-                        },
+                        }
                         ClientMessage::Status(_player_status) => (), // ignore since game's started
                         ClientMessage::Downgrade => (), // ignore since the game's started
                         ClientMessage::Upgrade(_player_status) => (), //ignore here since it's a
-                                                                     //player not a spectator
+                        //player not a spectator
                         ClientMessage::Disconnected => {
                             self.lobby.players.remove(idx);
                             todo!("write some disconnect logic when the game is running");
-                        },
+                        }
                     }
                 }
 
@@ -358,20 +385,25 @@ impl ServerGame {
             }
 
             for idx in 0..self.lobby.spectators.len() {
-                let client_messages = self.lobby.spectators[idx].connection.client_messages().await;
+                let client_messages = self.lobby.spectators[idx]
+                    .connection
+                    .client_messages()
+                    .await;
 
                 for message in client_messages {
                     match message {
-                        ClientMessage::Pong => self.lobby.spectators[idx].connection.pong_recieved = true,
+                        ClientMessage::Pong => {
+                            self.lobby.spectators[idx].connection.pong_recieved = true
+                        }
                         ClientMessage::Round(_round) => (), // ignore since the spectators don't
-                                                            // send rounds
+                        // send rounds
                         ClientMessage::Status(_player_status) => (), // ignore since it's a spectator
                         ClientMessage::Downgrade => (), // ignore because it's a spectator
                         ClientMessage::Upgrade(_player_status) => (), // ignore since the game's
-                                                                     // started
+                        // started
                         ClientMessage::Disconnected => {
                             self.lobby.spectators.remove(idx);
-                        },
+                        }
                     }
                 }
 
