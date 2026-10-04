@@ -1,11 +1,9 @@
 use {
-    kc_logic::*,
-    smol::{
+    kc_logic::*, smol::{
         io,
         net::{TcpListener, TcpStream},
         prelude::*,
-    },
-    std::time::{Duration, Instant},
+    }, std::time::{Duration, Instant},
 };
 
 struct Connection {
@@ -16,7 +14,9 @@ struct Connection {
 }
 
 impl Connection {
-    fn new(buf_reader: io::BufReader<TcpStream>, stream: TcpStream) -> Self {
+    fn new(stream: TcpStream) -> Self {
+        let buf_reader = io::BufReader::new(stream.clone());
+
         Self {
             buf_reader,
             stream,
@@ -27,15 +27,6 @@ impl Connection {
 
     async fn ping(&mut self) -> smol::io::Result<()> {
         if !self.pong_recieved {
-            let mut buf = String::new();
-            self.buf_reader.read_line(&mut buf).await?;
-
-            if buf.contains("PONG") {
-                self.pong_recieved = true;
-            }
-
-            // TODO: This is probably a message that needs to be used by another part of the program
-
             return Err(smol::io::Error::new(
                 smol::io::ErrorKind::Other,
                 "pong is not recieved",
@@ -57,6 +48,21 @@ impl Connection {
 
         Ok(())
     }
+
+    async fn client_messages(&mut self) -> Vec<ClientMessage> {
+        let mut buf = String::new();
+
+        let result = self.buf_reader.read_to_string(&mut buf).await;
+
+        if let Err(error) = result {
+            eprintln!("{}", error);
+        }
+
+        buf
+            .split("\n")
+            .filter_map(|line| serde_json::from_str::<ClientMessage>(line).ok())
+            .collect()
+    }
 }
 
 struct PlayerConnection {
@@ -68,11 +74,6 @@ struct SpectatorConnection {
     connection: Connection,
 }
 
-enum ConnectionType {
-    Player(PlayerConnection),
-    Spectator(SpectatorConnection),
-}
-
 struct ServerLobby {
     players: Vec<PlayerConnection>,
     spectators: Vec<SpectatorConnection>,
@@ -80,6 +81,37 @@ struct ServerLobby {
 }
 
 impl ServerLobby {
+    async fn handle_incoming_connection(&mut self) {
+        if let Ok((stream, _address)) = self.listener.accept().await {
+            let connection = Connection::new(stream);
+
+            let spectator_connection = SpectatorConnection { connection };
+
+            self.spectators.push(spectator_connection);
+        }
+    }
+
+    fn downgrade_player(&mut self, idx: usize) {
+        let player = self.players.remove(idx);
+
+        let spectator = SpectatorConnection {
+            connection: player.connection,
+        };
+
+        self.spectators.push(spectator);
+    }
+
+    fn upgrade_spectator(&mut self, idx: usize, status: PlayerStatus) {
+        let spectator = self.spectators.remove(idx);
+
+        let player = PlayerConnection {
+            status,
+            connection: spectator.connection,
+        };
+
+        self.players.push(player);
+    }
+
     async fn new(listener: TcpListener) -> Self {
         let mut lobby = Self {
             players: Vec::new(),
@@ -89,134 +121,84 @@ impl ServerLobby {
 
         loop {
             // TODO: Make the parts of this loop a seperate function
-            // Handle incoming connections
+            // Handle incoming connections as spectators
 
-            if let Ok((stream, _address)) = lobby.listener.accept().await {
-                let mut buf_reader = io::BufReader::new(stream.clone());
-
-                let mut buf = String::new();
-
-                let result = buf_reader.read_line(&mut buf).await;
-
-                if let Err(error) = result {
-                    eprintln!("{}", error);
-                } else {
-                    // Succesful read
-
-                    // Check if the buf contains player or spectator
-
-                    let connection = Connection::new(buf_reader, stream);
-
-                    if buf.contains("player") {
-                        let status = PlayerStatus {
-                            is_ready: false,
-                            name: None,
-                            preferred_color: Color {
-                                red: 0,
-                                green: 0,
-                                blue: 0,
-                            },
-                        };
-
-                        let player_connection = PlayerConnection { status, connection };
-
-                        lobby.players.push(player_connection);
-                    } else if buf.contains("spectator") {
-                        let spectator_connection = SpectatorConnection { connection };
-
-                        lobby.spectators.push(spectator_connection);
-                    }
-                }
-            }
-
-            // Send out heartbeats
-
-            for i in 0..lobby.spectators.len() {
-                let spectator_connection = &mut lobby.spectators[i];
-                let result = spectator_connection.connection.ping().await;
-
-                if let Err(error) = result {
-                    eprintln!("{}", error);
-
-                    match error.kind() {
-                        io::ErrorKind::Other => {
-                            // Pong not recieved yet, maybe do something here
-                        }
-                        io::ErrorKind::BrokenPipe
-                        | io::ErrorKind::ConnectionReset
-                        | io::ErrorKind::ConnectionAborted
-                        | io::ErrorKind::NotConnected
-                        | io::ErrorKind::WriteZero => {
-                            // Connection broken
-
-                            lobby.spectators.remove(i);
-                        }
-                        _ => (),
-                    }
-                }
-            }
-
-            // Read from every player if they have a new status and send out heartbeats
+            lobby.handle_incoming_connection().await;
 
             let mut status_update = false;
 
-            for i in 0..lobby.players.len() {
-                // TODO: WHen we remove elements from the players and spectator vectors, the index
-                // will end out of bounds at the end.
-                let player_connection = &mut lobby.players[i];
-                // If a pong is waiting call ping
-                if !player_connection.connection.pong_recieved {
-                    let result = player_connection.connection.ping().await;
+            // Read all the ClientMessage enums sent from the clients and handle them
+            for idx in 0..lobby.players.len() {
+                let client_messages = lobby.players[idx].connection.client_messages().await;
 
-                    if let Err(error) = result {
-                        eprintln!("{}", error);
-
-                        match error.kind() {
-                            io::ErrorKind::Other => {
-                                // Pong not recieved yet, maybe do something here
-                            }
-                            io::ErrorKind::BrokenPipe
-                            | io::ErrorKind::ConnectionReset
-                            | io::ErrorKind::ConnectionAborted
-                            | io::ErrorKind::NotConnected
-                            | io::ErrorKind::WriteZero => {
-                                // Connection broken
-
-                                lobby.players.remove(i);
-                                continue;
-                            }
-                            _ => (),
-                        }
+                for message in client_messages {
+                    match message {
+                        ClientMessage::Pong => lobby.players[idx].connection.pong_recieved = true,
+                        ClientMessage::Round(_round) => (), // ignore since the game's not started
+                        ClientMessage::Status(player_status) => {
+                            lobby.players[idx].status = player_status;
+                            status_update = true;
+                        },
+                        ClientMessage::Downgrade => lobby.downgrade_player(idx),
+                        ClientMessage::Upgrade(_player_status) => (), //ignore here since it's a
+                                                                     //player not a spectator
+                        ClientMessage::Disconnected => {
+                            lobby.players.remove(idx);
+                        },
                     }
                 }
 
-                let mut buf = String::new();
-                player_connection
-                    .connection
-                    .buf_reader
-                    .read_line(&mut buf)
-                    .await
-                    .unwrap();
+                // Do a ping
+                let result = lobby.players[idx].connection.ping().await;
 
-                let status = serde_json::from_str::<PlayerStatus>(buf.as_str()).unwrap();
+                if let Err(error) = result {
+                    eprintln!("{}", error);
+                }
+            }
 
-                if player_connection.status != status {
-                    player_connection.status = status;
-                    status_update = true;
+            for idx in 0..lobby.spectators.len() {
+                let client_messages = lobby.spectators[idx].connection.client_messages().await;
+
+                for message in client_messages {
+                    match message {
+                        ClientMessage::Pong => lobby.spectators[idx].connection.pong_recieved = true,
+                        ClientMessage::Round(_round) => (), // ignore since the spectators don't
+                                                            // send rounds
+                        ClientMessage::Status(_player_status) => (), // ignore since it's a spectator
+                        ClientMessage::Downgrade => (), // ignore because it's a spectator
+                        ClientMessage::Upgrade(player_status) => lobby.upgrade_spectator(idx, player_status),
+                        ClientMessage::Disconnected => {
+                            lobby.spectators.remove(idx);
+                        },
+                    }
+                }
+
+                // Do a ping
+                let result = lobby.spectators[idx].connection.ping().await;
+
+                if let Err(error) = result {
+                    eprintln!("{}", error);
                 }
             }
 
             // If any new status we send out a message to everyone
             if status_update {
-                let status_json = serde_json::to_vec(
-                    &lobby.players
-                        .iter()
-                        .map(|player| player.status.clone())
-                        .collect::<Vec<PlayerStatus>>(),
-                )
-                .unwrap();
+                let player_status = lobby.players
+                    .iter()
+                    .map(|player| player.status.clone())
+                    .collect::<Vec<PlayerStatus>>();
 
-                lobby.write_to_all(&status_json).await.unwrap();
+                // send out to spectators
+                let buf = serde_json::to_vec(&ServerMessage::StatusUpdateSpectator(player_status.clone())).unwrap();
+                lobby.write_to_spectators(&buf).await.unwrap();
+
+                // write to players
+                for idx in 0..lobby.players.len() {
+                    let player_number = PlayerNumber::from(idx);
+
+                    let buf = serde_json::to_vec(&ServerMessage::StatusUpdatePlayer(player_status.clone(), player_number)).unwrap();
+                    lobby.players[idx].connection.stream.write_all(&buf).await.unwrap();
+                }
             }
 
             // If the game is ready to start, break out of the loop
@@ -231,7 +213,11 @@ impl ServerLobby {
         lobby
     }
 
-    async fn write_to_all(&mut self, buf: &[u8]) -> smol::io::Result<()> {
+    async fn write_to_players(&mut self, buf: &[u8]) -> smol::io::Result<()> {
+        // TODO: When writing here, I gotta make sure to not return an error if one connection fails,
+        // since I should then just handle that one error here, and if a player disconnects etc...
+        // I gotta handle that gracefully.
+
         for player in &mut self.players {
             player
                 .connection
@@ -240,6 +226,14 @@ impl ServerLobby {
                 .await?;
         }
 
+        Ok(())
+    }
+
+    async fn write_to_spectators(&mut self, buf: &[u8]) -> smol::io::Result<()> {
+        // TODO: When writing here, I gotta make sure to not return an error if one connection fails,
+        // since I should then just handle that one error here, and if a player disconnects etc...
+        // I gotta handle that gracefully.
+
         for spectator in &mut self.spectators {
             spectator
                 .connection
@@ -247,6 +241,13 @@ impl ServerLobby {
                 .write_all(buf)
                 .await?;
         }
+
+        Ok(())
+    }
+
+    async fn write_to_all(&mut self, buf: &[u8]) -> smol::io::Result<()> {
+        self.write_to_players(buf).await?;
+        self.write_to_spectators(buf).await?;
 
         Ok(())
     }
@@ -277,6 +278,39 @@ impl ServerGame {
         &mut self.lobby.players[self.game_state.current_player_number as usize]
     }
 
+    async fn apply_round(&mut self, round: Round) -> bool {
+        let game_state_result = self.game_state.apply_round(round);
+
+        match game_state_result {
+            Err(error) => {
+                eprintln!("{}", error);
+                
+                // Ask for a round again
+
+                let buf = serde_json::to_vec(&ServerMessage::YourTurn).unwrap();
+                self.current_player_connection_mut().connection.stream.write_all(&buf).await.unwrap();
+            },
+            Ok((game_state, did_win)) => {
+                let player_that_won = match did_win {
+                    true => Some(game_state.current_player_number),
+                    false => None,
+                };
+
+                let buf = serde_json::to_vec(&ServerMessage::GameState(game_state, player_that_won)).unwrap();
+                self.lobby.write_to_all(&buf).await.unwrap();
+
+                if !did_win {
+                    let buf = serde_json::to_vec(&ServerMessage::YourTurn).unwrap();
+                    self.current_player_connection_mut().connection.stream.write_all(&buf).await.unwrap();
+                }
+
+                return did_win;
+            },
+        }
+
+        false
+    }
+
     async fn run(&mut self) {
         // Let everybody know the current state of the game
 
@@ -284,18 +318,71 @@ impl ServerGame {
 
         self.lobby.write_to_all(&game_state_json).await.unwrap();
 
-        let mut player_move_pending = false;
+        // Tell the current player it's their turn
+        let current_player = self.current_player_connection_mut();
+        let buf = serde_json::to_vec(&ServerMessage::YourTurn).unwrap();
+        current_player.connection.stream.write_all(&buf).await.unwrap();
 
         loop {
-            // Ask the current player for a move.
-            if !player_move_pending {
-                let current_player = self.current_player_connection_mut();
-            }
-            // When the player answers validate the move
-            // If we can't use it ask again.
-            // If it's valid we apply it and send out the new game state to everybody
+            // Handle incoming messages and send out pings
+            for idx in 0..self.lobby.players.len() {
+                let client_messages = self.lobby.players[idx].connection.client_messages().await;
 
-            // Send out heartbeats.
+                for message in client_messages {
+                    match message {
+                        ClientMessage::Pong => self.lobby.players[idx].connection.pong_recieved = true,
+                        ClientMessage::Round(round) => {
+                            if PlayerNumber::from(idx) == self.game_state.current_player_number {
+                                if self.apply_round(round).await { // a player won
+                                    return;
+                                }
+                            }
+                        },
+                        ClientMessage::Status(_player_status) => (), // ignore since game's started
+                        ClientMessage::Downgrade => (), // ignore since the game's started
+                        ClientMessage::Upgrade(_player_status) => (), //ignore here since it's a
+                                                                     //player not a spectator
+                        ClientMessage::Disconnected => {
+                            self.lobby.players.remove(idx);
+                            todo!("write some disconnect logic when the game is running");
+                        },
+                    }
+                }
+
+                // Do a ping
+                let result = self.lobby.players[idx].connection.ping().await;
+
+                if let Err(error) = result {
+                    eprintln!("{}", error);
+                }
+            }
+
+            for idx in 0..self.lobby.spectators.len() {
+                let client_messages = self.lobby.spectators[idx].connection.client_messages().await;
+
+                for message in client_messages {
+                    match message {
+                        ClientMessage::Pong => self.lobby.spectators[idx].connection.pong_recieved = true,
+                        ClientMessage::Round(_round) => (), // ignore since the spectators don't
+                                                            // send rounds
+                        ClientMessage::Status(_player_status) => (), // ignore since it's a spectator
+                        ClientMessage::Downgrade => (), // ignore because it's a spectator
+                        ClientMessage::Upgrade(_player_status) => (), // ignore since the game's
+                                                                     // started
+                        ClientMessage::Disconnected => {
+                            self.lobby.spectators.remove(idx);
+                        },
+                    }
+                }
+
+                // Do a ping
+                let result = self.lobby.spectators[idx].connection.ping().await;
+
+                if let Err(error) = result {
+                    eprintln!("{}", error);
+                }
+            }
+
             break;
         }
     }

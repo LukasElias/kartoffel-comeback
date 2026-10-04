@@ -1009,3 +1009,23 @@ impl DirectionDiagonal {
         }
     }
 }
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub enum ClientMessage {
+    Pong,
+    Round(Round),
+    Status(PlayerStatus),
+    Downgrade,
+    Upgrade(PlayerStatus),
+    Disconnected,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub enum ServerMessage {
+    Ping,
+    YourTurn,
+    StatusUpdatePlayer(Vec<PlayerStatus>, PlayerNumber),
+    StatusUpdateSpectator(Vec<PlayerStatus>),
+    GameState(GameState, Option<PlayerNumber>),
+    GamePaused(String), // This is also disconnected
+}
