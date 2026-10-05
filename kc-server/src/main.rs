@@ -303,6 +303,8 @@ impl ServerGame {
                     .unwrap();
             }
             Ok((game_state, did_win)) => {
+                self.game_state = game_state.clone();
+
                 let player_that_won = match did_win {
                     true => Some(game_state.current_player_number),
                     false => None,
