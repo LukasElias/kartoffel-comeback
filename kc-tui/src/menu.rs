@@ -1,4 +1,4 @@
-use crate::{Buffer, List, ListState, Rect, StatefulWidget, Style};
+use crate::{Constraint, Buffer, List, ListState, Rect, StatefulWidget, Style};
 
 // Model
 
@@ -43,6 +43,19 @@ impl StatefulWidget for MenuWidget {
             .highlight_style(highlight_style)
             .highlight_symbol(">");
 
-        list.render(area, buf, &mut state.list_state);
+        let width = 2 + items
+            .iter()
+            .map(|item| item.len())
+            .max()
+            .unwrap_or(0) as u16;
+
+        let height = list.len() as u16;
+
+        let centered = area.centered(
+            Constraint::Length(width), // Horizontal
+            Constraint::Length(height), // Vertical
+        );
+
+        list.render(centered, buf, &mut state.list_state);
     }
 }

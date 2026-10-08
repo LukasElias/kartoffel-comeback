@@ -112,14 +112,16 @@ impl Model {
 // View
 
 impl Model {
-    fn render(&self, frame: &mut Frame) {
+    // This has to be mutable since we have a state that can change when passed into the render
+    // method when using StatefulWidget
+    fn render(&mut self, frame: &mut Frame) {
         let layout = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]);
 
         let rects = layout.split(frame.area());
 
         let (main_rect, hint_rect) = (rects[0], rects[1]);
 
-        match &self.state {
+        match &mut self.state {
             ModelState::Menu(state) => {
                 MenuWidget::new().render(main_rect, frame.buffer_mut(), state)
             }
