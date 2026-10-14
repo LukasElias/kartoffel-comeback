@@ -126,3 +126,11 @@ Man ryger ud af spillet hvis man mister alle fire felter af sin hovedby og man v
 
 # Silas nye regler kartoffel comeback 2.1
 - Ny start-position for 3-personer (WIP)
+- Sælgefasen fjernes, men du kan bruge modstanderens veje (WIP)
+- Kartopulter og byer har tal og du kan kun bygge kartopulter oven på det samme tal, men du kan altid bygge en kartopult på din hovedby
+- Spillet er slut når en spiller er røget ud
+- En hovedby skal kun blive ramt på et felt før spilleren taber
+- Kartopulter ødelægger feltet de rammer, indtil det er angriberens tur igen
+- Du kan ikke bygge en kartopult lige efter du har bygget en by
+- Kartopulter koster 4 kartofler og kan kun skyde 2 felter
+- Man kan kun bygge en mur hvis der er en by ved siden af
